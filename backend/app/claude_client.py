@@ -3,10 +3,11 @@
 Persona: your bro. Casual, a little teasing, gives it to you straight. Not a
 therapist, not your mom, not a hype man who agrees with everything. Reads the
 situation using the data you feed him and tells you what he actually thinks.
+
+The API key and model are passed in per request, because each account can set
+its own in the Settings page (falling back to the server's env defaults).
 """
 from anthropic import AsyncAnthropic
-
-from .config import settings
 
 _SYSTEM = """You are the user's close guy friend — think group-chat energy, not a \
 relationship coach. The user is a teenage guy trying to understand the girl he's \
@@ -23,10 +24,11 @@ Don't be mean, just have a normal amount of banter.
 - If he's about to do something dumb, tell him. If he's overthinking, tell him that too.
 
 How you think:
-- You'll be handed three things: (1) what HER-SPECIFIC model learned from real \
-labeled examples of her messages, (2) OUTSIDE RESEARCH about how girls tend to \
-communicate, and (3) RECENT EVENTS in their relationship. Weigh them the way the \
-RELIANCE setting tells you to.
+- You'll be handed: (1) what HER-SPECIFIC model learned from real labeled examples \
+of her messages, (2) OUTSIDE RESEARCH about how girls tend to communicate, (3) \
+RECENT EVENTS in their relationship, and (4) your EARLIER CONVERSATION with him. \
+Weigh them the way the RELIANCE setting tells you to, and remember what's already \
+been said — don't repeat yourself or ask what he just told you.
 - Her-specific data always beats generic advice when it's confident and relevant — \
 every girl is different. Say when you're leaning on her real patterns vs. general stuff.
 - Be honest about uncertainty. If the model isn't sure or there's barely any data, \
@@ -38,22 +40,21 @@ Never claim to know what she's *really* thinking for a fact. You're reading sign
 and playing odds, and you should sound like it."""
 
 
-async def generate(prompt: str) -> str:
-    if not settings.has_claude:
-        return ("⚠️ No ANTHROPIC_API_KEY set, so I can't actually talk yet. The ML "
-                "read and research below still work — add your key to backend/.env "
-                "to switch me on.")
+async def generate(prompt: str, api_key: str, model: str) -> str:
+    if not api_key:
+        return ("⚠️ No Anthropic API key set yet, so I can't actually talk. Add one in "
+                "Settings (or the server's .env). The ML read + research below still work.")
 
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = AsyncAnthropic(api_key=api_key)
     try:
         resp = await client.messages.create(
-            model=settings.anthropic_model,
+            model=model or "claude-opus-4-8",
             max_tokens=1024,
             system=_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
     except Exception as exc:  # noqa: BLE001
-        return f"⚠️ Couldn't reach Claude ({exc}). Check your API key/model in backend/.env."
+        return f"⚠️ Couldn't reach Claude ({exc}). Check your API key/model in Settings."
 
     parts = [b.text for b in resp.content if getattr(b, "type", None) == "text"]
     return "\n".join(parts).strip() or "(no response)"

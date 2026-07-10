@@ -3,40 +3,49 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>girlbot — ask</title>
+  <title>girlbot</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="wrap">
+  <!-- login gate (only shown when Google auth is on and you're signed out) -->
+  <div id="gate" class="gate" style="display:none">
+    <div class="gate-card">
+      <h1>girlbot</h1>
+      <p class="tag">your bro who's been taking notes</p>
+      <p class="hint">Sign in so your memory stays permanent and private to you.</p>
+      <a class="gbtn" href="/auth/login">
+        <span class="g">G</span> Sign in with Google
+      </a>
+    </div>
+  </div>
+
+  <div class="wrap" id="appwrap" style="display:none">
     <header class="top">
       <div class="brand">
         <h1>girlbot</h1>
         <span class="tag">your bro who's been taking notes</span>
       </div>
-      <nav class="tabs">
-        <a href="/index.html" class="active">Ask</a>
-        <a href="/train.html">Train</a>
-      </nav>
+      <div class="topright">
+        <span class="status" id="status"></span>
+        <a class="iconbtn" href="/settings.html" title="Settings">⚙️</a>
+      </div>
     </header>
 
-    <div class="status" id="status"><span class="dot"></span> checking…</div>
-
-    <div class="panel">
+    <div class="panel chatpanel">
       <div class="controls">
         <div class="slider-box">
-          <label for="reliance" style="margin-top:0">How should I decide? — <span id="relianceLabel"></span></label>
+          <label for="reliance" style="margin-top:0">how should I decide? — <span id="relianceLabel"></span></label>
           <input type="range" id="reliance" min="0" max="100" value="60" />
-          <div class="ends"><span>all outside research</span><span>all her data</span></div>
+          <div class="ends"><span>outside research</span><span>her data</span></div>
         </div>
-        <label class="toggle"><input type="checkbox" id="useResearch" checked /> pull outside research</label>
+        <label class="toggle"><input type="checkbox" id="useResearch" checked /> research</label>
+        <button class="secondary small" id="clearMem" title="wipe this chat history">clear chat</button>
       </div>
 
-      <div id="chat">
-        <div class="msg bot">yo. what'd she say / do? paste the text or just tell me what's going on and I'll give you my read. 👀</div>
-      </div>
+      <div id="chat"></div>
 
       <div class="composer">
-        <textarea id="q" placeholder="e.g. she just replied 'k.' after I said I'd be late — should I be worried?"></textarea>
+        <textarea id="q" placeholder="paste what she said, or just tell me what's going on…"></textarea>
         <button id="send">Send</button>
       </div>
     </div>

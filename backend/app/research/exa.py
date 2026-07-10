@@ -1,12 +1,11 @@
-"""Exa search client — this is the 'what are people saying online' half.
+"""Exa search client — the 'what are people saying online' half.
 
 Exa does neural web search and can pull result text. We bias it toward the
 places where people actually decode this stuff out loud: Reddit, forums, etc.
-Falls back to an empty list (no crash) if there's no key or the call fails.
+The API key is passed in (per-account, set in Settings). Falls back to an empty
+list — never crashes — if there's no key or the call fails.
 """
 import httpx
-
-from ..config import settings
 
 _EXA_URL = "https://api.exa.ai/search"
 
@@ -20,8 +19,9 @@ _SOCIAL_DOMAINS = [
 ]
 
 
-async def search(query: str, num_results: int = 4, social_only: bool = True) -> list[dict]:
-    if not settings.has_exa:
+async def search(query: str, api_key: str, num_results: int = 4,
+                 social_only: bool = True) -> list[dict]:
+    if not api_key:
         return []
 
     payload: dict = {
@@ -33,7 +33,7 @@ async def search(query: str, num_results: int = 4, social_only: bool = True) -> 
     if social_only:
         payload["includeDomains"] = _SOCIAL_DOMAINS
 
-    headers = {"x-api-key": settings.exa_api_key, "Content-Type": "application/json"}
+    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(_EXA_URL, json=payload, headers=headers)
@@ -47,12 +47,10 @@ async def search(query: str, num_results: int = 4, social_only: bool = True) -> 
         text = r.get("text") or ""
         highlights = r.get("highlights") or []
         snippet = " … ".join(highlights) if highlights else text[:400]
-        out.append(
-            {
-                "source": "social",
-                "title": r.get("title") or "(untitled)",
-                "url": r.get("url", ""),
-                "snippet": snippet.strip(),
-            }
-        )
+        out.append({
+            "source": "social",
+            "title": r.get("title") or "(untitled)",
+            "url": r.get("url", ""),
+            "snippet": snippet.strip(),
+        })
     return out

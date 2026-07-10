@@ -1,7 +1,7 @@
-"""A handful of illustrative labeled examples so the app isn't a blank slate on
-first run. These are generic (NOT your girlfriend) and flagged is_seed=1, so you
-can wipe them all with one button on the Training page once you've added real
-data. Replacing them with your own labeled texts is the whole point.
+"""A handful of illustrative labeled examples so a brand-new account isn't a
+blank slate. These are generic (NOT your girlfriend) and flagged is_seed=1, so
+you can wipe them with one button in Settings once you've built up real data —
+which happens automatically as you chat, if training is on.
 """
 from .. import db
 
@@ -45,9 +45,9 @@ SEED_EXAMPLES = [
 ]
 
 
-def ensure_seed() -> None:
-    """Insert seed rows only if the examples table is completely empty."""
-    if db.count_examples() > 0:
+def ensure_seed(user_id: int) -> None:
+    """Insert seed rows only if this account has no examples yet."""
+    if db.count_examples(user_id) > 0:
         return
     for her, ctx, meaning, intent in SEED_EXAMPLES:
-        db.add_example(her, ctx, meaning, intent, is_seed=1)
+        db.add_example(user_id, her, ctx, meaning, intent, is_seed=1)

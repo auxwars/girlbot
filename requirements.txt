@@ -1,0 +1,3 @@
+# Root requirements so Railway/Nixpacks auto-detects a Python app and installs
+# dependencies. The app itself lives in backend/ (see Procfile).
+-r backend/requirements.txt

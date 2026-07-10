@@ -60,8 +60,8 @@ class Analysis:
 class MeaningEngine:
     """Fit-on-demand wrapper around the from-scratch ML pieces."""
 
-    def _build(self):
-        examples = db.list_examples()
+    def _build(self, user_id: int):
+        examples = db.list_examples(user_id)
         if not examples:
             return None
         docs = [self._doc(e) for e in examples]
@@ -78,9 +78,9 @@ class MeaningEngine:
         ctx = example.get("context") or ""
         return f"{example['her_message']} {ctx}".strip()
 
-    def analyze(self, message: str, context: str = "", k: int = 3) -> Analysis:
-        built = self._build()
-        n = db.count_examples()
+    def analyze(self, user_id: int, message: str, context: str = "", k: int = 3) -> Analysis:
+        built = self._build(user_id)
+        n = db.count_examples(user_id)
         if built is None:
             return Analysis(
                 trained=False, n_examples=0,

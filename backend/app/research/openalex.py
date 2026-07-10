@@ -1,25 +1,23 @@
 """OpenAlex client — the 'what does the actual research say' half.
 
 Free, no API key. Pulls relationship-psychology papers (communication, conflict,
-attachment, etc.) so the bot can ground advice in more than vibes. Polite pool:
-we pass a mailto if you set one.
+attachment, how people process and respond to emotional cues) so the bot can
+ground advice in more than vibes. Polite pool: pass a mailto if one is set.
 """
 import httpx
-
-from ..config import settings
 
 _OPENALEX_URL = "https://api.openalex.org/works"
 
 
-async def search(query: str, num_results: int = 3) -> list[dict]:
+async def search(query: str, mailto: str = "", num_results: int = 3) -> list[dict]:
     params = {
         "search": query,
         "per_page": num_results,
         "filter": "has_abstract:true",
         "sort": "relevance_score:desc",
     }
-    if settings.openalex_mailto:
-        params["mailto"] = settings.openalex_mailto
+    if mailto:
+        params["mailto"] = mailto
 
     try:
         async with httpx.AsyncClient(timeout=20) as client:
@@ -31,15 +29,12 @@ async def search(query: str, num_results: int = 3) -> list[dict]:
 
     out = []
     for w in data.get("results", []):
-        out.append(
-            {
-                "source": "research",
-                "title": w.get("title") or "(untitled)",
-                "url": (w.get("primary_location") or {}).get("landing_page_url")
-                or w.get("id", ""),
-                "snippet": _abstract(w),
-            }
-        )
+        out.append({
+            "source": "research",
+            "title": w.get("title") or "(untitled)",
+            "url": (w.get("primary_location") or {}).get("landing_page_url") or w.get("id", ""),
+            "snippet": _abstract(w),
+        })
     return out
 
 
@@ -53,5 +48,4 @@ def _abstract(work: dict) -> str:
         for i in idxs:
             positions.append((i, word))
     positions.sort()
-    text = " ".join(w for _, w in positions)
-    return text[:500]
+    return " ".join(w for _, w in positions)[:500]

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>girlbot — settings</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand"><h1>girlbot</h1><span class="tag">settings</span></div>
+      <a class="iconbtn" href="/index.html" title="Back to chat">← chat</a>
+    </header>
+
+    <!-- ACCOUNT -->
+    <div class="panel">
+      <h2>👤 Account</h2>
+      <div id="account"></div>
+    </div>
+
+    <!-- CONNECTIONS -->
+    <div class="panel">
+      <h2>🔌 Connections (API keys)</h2>
+      <p class="hint">Paste your keys here. They're saved to your account. Leave one blank to fall back to whatever the server was started with.</p>
+
+      <label for="anthropic_key">Anthropic API key <span class="req">— required for the bot to talk</span></label>
+      <input type="password" id="anthropic_key" placeholder="sk-ant-…" autocomplete="off" />
+      <p class="hint">Get it at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com → Settings → API Keys</a>. Copy the whole <code>sk-ant-…</code> string and paste it here.</p>
+
+      <label for="model">Model</label>
+      <select id="model">
+        <option value="claude-opus-4-8">claude-opus-4-8 (smartest — recommended)</option>
+        <option value="claude-sonnet-5">claude-sonnet-5 (cheaper, still great)</option>
+        <option value="claude-haiku-4-5">claude-haiku-4-5 (fastest/cheapest)</option>
+      </select>
+
+      <label for="exa_key">Exa API key <span class="opt">— social / Reddit research (optional)</span></label>
+      <input type="password" id="exa_key" placeholder="paste Exa key…" autocomplete="off" />
+      <p class="hint">This powers the "what are people saying online" research (Reddit, forums). Get a key at <a href="https://dashboard.exa.ai/api-keys" target="_blank" rel="noopener">dashboard.exa.ai → API Keys</a> and paste it here.</p>
+
+      <label for="openalex_mailto">OpenAlex email <span class="opt">— science / psychology research (optional)</span></label>
+      <input type="text" id="openalex_mailto" placeholder="you@example.com" autocomplete="off" />
+      <p class="hint">OpenAlex reads relationship-psychology papers — no key needed, it just wants an email to be polite. Paste any email you use here.</p>
+    </div>
+
+    <!-- BEHAVIOR -->
+    <div class="panel">
+      <h2>🎛️ Behavior</h2>
+
+      <label class="toggle big"><input type="checkbox" id="training_enabled" /> <span>Learn from our conversations</span></label>
+      <p class="hint">When on, I quietly turn what you tell me ("she said X, it meant Y") into training data + memory, so I get sharper about <em>her</em> over time. Off = I just chat and don't save patterns.</p>
+
+      <label class="toggle"><input type="checkbox" id="use_research" /> <span>Pull outside research by default</span></label>
+
+      <label for="reliance" style="margin-top:14px">Default reliance — <span id="relianceLabel"></span></label>
+      <input type="range" id="reliance" min="0" max="100" value="60" />
+      <div class="ends"><span>outside research</span><span>her data</span></div>
+
+      <div style="margin-top:16px"><button id="save">Save settings</button></div>
+    </div>
+
+    <!-- LEARNED DATA -->
+    <div class="panel">
+      <h2>📚 What I've learned about her</h2>
+      <p class="hint" id="learnedNote"></p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
+        <button class="danger" id="clearSeed">Wipe demo examples</button>
+        <button class="danger" id="clearAll">Wipe ALL learned data</button>
+      </div>
+      <div id="examples"></div>
+
+      <h3>Remembered events</h3>
+      <div id="events"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/settings.js"></script>
+</body>
+</html>

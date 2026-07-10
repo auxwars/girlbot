@@ -4,12 +4,13 @@ import asyncio
 from . import exa, openalex
 
 
-async def gather(query: str, n_social: int, n_research: int) -> list[dict]:
+async def gather(query: str, exa_key: str, openalex_mailto: str,
+                 n_social: int, n_research: int) -> list[dict]:
     tasks = []
     if n_social > 0:
-        tasks.append(exa.search(query, num_results=n_social, social_only=True))
+        tasks.append(exa.search(query, exa_key, num_results=n_social, social_only=True))
     if n_research > 0:
-        tasks.append(openalex.search(query, num_results=n_research))
+        tasks.append(openalex.search(query, openalex_mailto, num_results=n_research))
 
     if not tasks:
         return []
