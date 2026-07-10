@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>girlbot — ask</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">
+        <h1>girlbot</h1>
+        <span class="tag">your bro who's been taking notes</span>
+      </div>
+      <nav class="tabs">
+        <a href="/index.html" class="active">Ask</a>
+        <a href="/train.html">Train</a>
+      </nav>
+    </header>
+
+    <div class="status" id="status"><span class="dot"></span> checking…</div>
+
+    <div class="panel">
+      <div class="controls">
+        <div class="slider-box">
+          <label for="reliance" style="margin-top:0">How should I decide? — <span id="relianceLabel"></span></label>
+          <input type="range" id="reliance" min="0" max="100" value="60" />
+          <div class="ends"><span>all outside research</span><span>all her data</span></div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="useResearch" checked /> pull outside research</label>
+      </div>
+
+      <div id="chat">
+        <div class="msg bot">yo. what'd she say / do? paste the text or just tell me what's going on and I'll give you my read. 👀</div>
+      </div>
+
+      <div class="composer">
+        <textarea id="q" placeholder="e.g. she just replied 'k.' after I said I'd be late — should I be worried?"></textarea>
+        <button id="send">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
