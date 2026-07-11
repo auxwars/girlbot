@@ -6,3 +6,4 @@ numpy>=1.26
 python-dotenv>=1.0
 pydantic>=2.6
 itsdangerous>=2.1
+psycopg[binary]>=3.1

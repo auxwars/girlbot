@@ -1,9 +1,14 @@
-"""SQLite layer with per-user scoping.
+"""Storage layer, per-user scoped. Works on either SQLite or Postgres.
+
+Backend is chosen automatically:
+  - if DATABASE_URL is set (e.g. Railway's Postgres plugin) -> Postgres
+  - otherwise -> a local SQLite file (zero setup for local dev)
 
 Everything is tied to a user id so memory can be permanent and account-specific
-once Google sign-in is on. In local mode (no Google configured) there's a single
-implicit "local" user, so it just works without logging in.
+once Google sign-in is on. In local mode (no Google) there's a single implicit
+"local" user, so it just works without logging in.
 """
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -11,40 +16,81 @@ from typing import Iterator, Optional
 
 from .config import settings
 
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+IS_PG = DATABASE_URL.startswith("postgres")
+
+if IS_PG:
+    import psycopg
+    from psycopg.rows import dict_row
+
+# Primary-key declaration differs between the two engines.
+_PK = "SERIAL PRIMARY KEY" if IS_PG else "INTEGER PRIMARY KEY AUTOINCREMENT"
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-@contextmanager
-def get_conn() -> Iterator[sqlite3.Connection]:
+def _connect():
+    if IS_PG:
+        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
     conn = sqlite3.connect(settings.db_path)
     conn.row_factory = sqlite3.Row
+    return conn
+
+
+@contextmanager
+def _conn() -> Iterator:
+    c = _connect()
     try:
-        yield conn
-        conn.commit()
+        yield c
+        c.commit()
     finally:
-        conn.close()
+        c.close()
 
 
-def _cols(conn, table: str) -> set[str]:
-    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+def _ph(sql: str) -> str:
+    """SQLite uses ? placeholders, Postgres uses %s."""
+    return sql.replace("?", "%s") if IS_PG else sql
 
+
+def _exec(c, sql: str, params: tuple = ()):
+    cur = c.cursor()
+    cur.execute(_ph(sql), params)
+    return cur
+
+
+def _fetchone(c, sql: str, params: tuple = ()) -> Optional[dict]:
+    row = _exec(c, sql, params).fetchone()
+    return dict(row) if row else None
+
+
+def _fetchall(c, sql: str, params: tuple = ()) -> list[dict]:
+    return [dict(r) for r in _exec(c, sql, params).fetchall()]
+
+
+def _insert(c, sql: str, params: tuple = ()) -> int:
+    """Run an INSERT and return the new row id on either backend."""
+    if IS_PG:
+        return _exec(c, sql + " RETURNING id", params).fetchone()["id"]
+    return _exec(c, sql, params).lastrowid
+
+
+# --------------------------------------------------------------------------
+# schema
+# --------------------------------------------------------------------------
 
 def init_db() -> None:
-    with get_conn() as conn:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    stmts = [
+        f"""CREATE TABLE IF NOT EXISTS users (
+                id         {_PK},
                 google_sub TEXT UNIQUE,
                 email      TEXT DEFAULT '',
                 name       TEXT DEFAULT '',
                 picture    TEXT DEFAULT '',
                 created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS user_settings (
+        )""",
+        """CREATE TABLE IF NOT EXISTS user_settings (
                 user_id          INTEGER PRIMARY KEY,
                 anthropic_key    TEXT DEFAULT '',
                 exa_key          TEXT DEFAULT '',
@@ -54,18 +100,16 @@ def init_db() -> None:
                 reliance         INTEGER DEFAULT 60,
                 use_research     INTEGER DEFAULT 1,
                 seeded           INTEGER DEFAULT 0
-            );
-
-            CREATE TABLE IF NOT EXISTS messages (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        )""",
+        f"""CREATE TABLE IF NOT EXISTS messages (
+                id         {_PK},
                 user_id    INTEGER NOT NULL,
                 role       TEXT NOT NULL,
                 content    TEXT NOT NULL,
                 created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS examples (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        )""",
+        f"""CREATE TABLE IF NOT EXISTS examples (
+                id           {_PK},
                 user_id      INTEGER NOT NULL DEFAULT 1,
                 created_at   TEXT NOT NULL,
                 her_message  TEXT NOT NULL,
@@ -73,81 +117,85 @@ def init_db() -> None:
                 true_meaning TEXT NOT NULL,
                 intent       TEXT NOT NULL,
                 is_seed      INTEGER NOT NULL DEFAULT 0
-            );
-
-            CREATE TABLE IF NOT EXISTS events (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        )""",
+        f"""CREATE TABLE IF NOT EXISTS events (
+                id         {_PK},
                 user_id    INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
                 text       TEXT NOT NULL
-            );
-            """
-        )
-        # tiny migrations for databases created by an earlier version
-        if "user_id" not in _cols(conn, "examples"):
-            conn.execute("ALTER TABLE examples ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
-        if "user_id" not in _cols(conn, "events"):
-            conn.execute("ALTER TABLE events ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
-        if "seeded" not in _cols(conn, "user_settings"):
-            conn.execute("ALTER TABLE user_settings ADD COLUMN seeded INTEGER DEFAULT 0")
+        )""",
+    ]
+    with _conn() as c:
+        for s in stmts:
+            _exec(c, s)
+        # migrate SQLite databases created by an earlier (pre-user) version
+        if not IS_PG:
+            cols = lambda t: {r["name"] for r in _exec(c, f"PRAGMA table_info({t})").fetchall()}
+            if "user_id" not in cols("examples"):
+                _exec(c, "ALTER TABLE examples ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+            if "user_id" not in cols("events"):
+                _exec(c, "ALTER TABLE events ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+            if "seeded" not in cols("user_settings"):
+                _exec(c, "ALTER TABLE user_settings ADD COLUMN seeded INTEGER DEFAULT 0")
 
 
-# ---- users --------------------------------------------------------------
-
-def _row_to_user(row) -> dict:
-    return dict(row) if row else None
-
+# --------------------------------------------------------------------------
+# users
+# --------------------------------------------------------------------------
 
 def get_user(user_id: int) -> Optional[dict]:
-    with get_conn() as conn:
-        return _row_to_user(conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone())
+    with _conn() as c:
+        return _fetchone(c, "SELECT * FROM users WHERE id = ?", (user_id,))
 
 
 def get_or_create_local_user() -> dict:
     """The single implicit user when Google auth isn't configured."""
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM users WHERE google_sub = 'local'").fetchone()
+    with _conn() as c:
+        row = _fetchone(c, "SELECT * FROM users WHERE google_sub = 'local'")
         if row:
-            return dict(row)
-        cur = conn.execute(
-            "INSERT INTO users (google_sub, email, name, created_at) VALUES ('local', '', 'You', ?)",
-            (_now(),),
-        )
-        uid = cur.lastrowid
+            return row
+        uid = _insert(c, "INSERT INTO users (google_sub, email, name, created_at)"
+                         " VALUES ('local', '', 'You', ?)", (_now(),))
     _ensure_settings(uid)
     return get_user(uid)
 
 
 def get_or_create_google_user(sub: str, email: str, name: str, picture: str) -> dict:
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM users WHERE google_sub = ?", (sub,)).fetchone()
+    with _conn() as c:
+        row = _fetchone(c, "SELECT * FROM users WHERE google_sub = ?", (sub,))
         if row:
-            conn.execute("UPDATE users SET email=?, name=?, picture=? WHERE id=?",
-                         (email or "", name or "", picture or "", row["id"]))
+            _exec(c, "UPDATE users SET email=?, name=?, picture=? WHERE id=?",
+                  (email or "", name or "", picture or "", row["id"]))
             uid = row["id"]
         else:
-            cur = conn.execute(
-                "INSERT INTO users (google_sub, email, name, picture, created_at) VALUES (?,?,?,?,?)",
-                (sub, email or "", name or "", picture or "", _now()),
-            )
-            uid = cur.lastrowid
+            uid = _insert(c, "INSERT INTO users (google_sub, email, name, picture, created_at)"
+                             " VALUES (?,?,?,?,?)",
+                          (sub, email or "", name or "", picture or "", _now()))
     _ensure_settings(uid)
     return get_user(uid)
 
 
-# ---- per-user settings --------------------------------------------------
+# --------------------------------------------------------------------------
+# per-user settings
+# --------------------------------------------------------------------------
 
 def _ensure_settings(user_id: int) -> None:
-    with get_conn() as conn:
-        exists = conn.execute("SELECT 1 FROM user_settings WHERE user_id=?", (user_id,)).fetchone()
+    with _conn() as c:
+        exists = _fetchone(c, "SELECT 1 AS x FROM user_settings WHERE user_id=?", (user_id,))
         if not exists:
-            conn.execute("INSERT INTO user_settings (user_id) VALUES (?)", (user_id,))
+            _exec(c, "INSERT INTO user_settings (user_id) VALUES (?)", (user_id,))
 
 
 def get_settings(user_id: int) -> dict:
     _ensure_settings(user_id)
-    with get_conn() as conn:
-        return dict(conn.execute("SELECT * FROM user_settings WHERE user_id=?", (user_id,)).fetchone())
+    with _conn() as c:
+        return _fetchone(c, "SELECT * FROM user_settings WHERE user_id=?", (user_id,))
+
+
+def mark_seeded(user_id: int) -> None:
+    _ensure_settings(user_id)
+    with _conn() as c:
+        _exec(c, "UPDATE user_settings SET seeded = 1 WHERE user_id = ?", (user_id,))
 
 
 _ALLOWED_SETTING_FIELDS = {
@@ -156,134 +204,123 @@ _ALLOWED_SETTING_FIELDS = {
 }
 
 
-def mark_seeded(user_id: int) -> None:
-    _ensure_settings(user_id)
-    with get_conn() as conn:
-        conn.execute("UPDATE user_settings SET seeded = 1 WHERE user_id = ?", (user_id,))
-
-
 def save_settings(user_id: int, **fields) -> None:
     _ensure_settings(user_id)
     updates = {k: v for k, v in fields.items() if k in _ALLOWED_SETTING_FIELDS and v is not None}
     if not updates:
         return
     cols = ", ".join(f"{k} = ?" for k in updates)
-    with get_conn() as conn:
-        conn.execute(f"UPDATE user_settings SET {cols} WHERE user_id = ?",
-                     (*updates.values(), user_id))
+    with _conn() as c:
+        _exec(c, f"UPDATE user_settings SET {cols} WHERE user_id = ?",
+              (*updates.values(), user_id))
 
 
-# ---- conversation memory (messages) -------------------------------------
+# --------------------------------------------------------------------------
+# conversation memory (messages)
+# --------------------------------------------------------------------------
 
 def add_message(user_id: int, role: str, content: str) -> int:
-    with get_conn() as conn:
-        cur = conn.execute(
-            "INSERT INTO messages (user_id, role, content, created_at) VALUES (?,?,?,?)",
-            (user_id, role, content.strip(), _now()),
-        )
-        return cur.lastrowid
+    with _conn() as c:
+        return _insert(c, "INSERT INTO messages (user_id, role, content, created_at)"
+                          " VALUES (?,?,?,?)", (user_id, role, content.strip(), _now()))
 
 
 def list_messages(user_id: int, limit: Optional[int] = None) -> list[dict]:
     """Oldest-first for display / prompt building."""
-    with get_conn() as conn:
+    with _conn() as c:
         if limit:
-            rows = conn.execute(
-                "SELECT * FROM (SELECT * FROM messages WHERE user_id=? ORDER BY id DESC LIMIT ?)"
+            return _fetchall(
+                c,
+                "SELECT * FROM (SELECT * FROM messages WHERE user_id=? ORDER BY id DESC LIMIT ?) sub"
                 " ORDER BY id ASC",
                 (user_id, limit),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM messages WHERE user_id=? ORDER BY id ASC", (user_id,)
-            ).fetchall()
-        return [dict(r) for r in rows]
+            )
+        return _fetchall(c, "SELECT * FROM messages WHERE user_id=? ORDER BY id ASC", (user_id,))
 
 
 def clear_messages(user_id: int) -> int:
-    with get_conn() as conn:
-        return conn.execute("DELETE FROM messages WHERE user_id=?", (user_id,)).rowcount
+    with _conn() as c:
+        return _exec(c, "DELETE FROM messages WHERE user_id=?", (user_id,)).rowcount
 
 
-# ---- examples (learned patterns) ----------------------------------------
+# --------------------------------------------------------------------------
+# examples (learned patterns)
+# --------------------------------------------------------------------------
 
 def add_example(user_id: int, her_message: str, context: str, true_meaning: str,
                 intent: str, is_seed: int = 0) -> int:
-    with get_conn() as conn:
-        cur = conn.execute(
+    with _conn() as c:
+        return _insert(
+            c,
             "INSERT INTO examples (user_id, created_at, her_message, context, true_meaning, intent, is_seed)"
             " VALUES (?,?,?,?,?,?,?)",
             (user_id, _now(), her_message.strip(), context.strip(),
              true_meaning.strip(), intent.strip(), is_seed),
         )
-        return cur.lastrowid
 
 
 def example_exists(user_id: int, her_message: str, true_meaning: str) -> bool:
-    with get_conn() as conn:
-        return conn.execute(
-            "SELECT 1 FROM examples WHERE user_id=? AND her_message=? AND true_meaning=?",
+    with _conn() as c:
+        return _fetchone(
+            c, "SELECT 1 AS x FROM examples WHERE user_id=? AND her_message=? AND true_meaning=?",
             (user_id, her_message.strip(), true_meaning.strip()),
-        ).fetchone() is not None
+        ) is not None
 
 
 def list_examples(user_id: int) -> list[dict]:
-    with get_conn() as conn:
-        return [dict(r) for r in conn.execute(
-            "SELECT * FROM examples WHERE user_id=? ORDER BY id DESC", (user_id,)).fetchall()]
+    with _conn() as c:
+        return _fetchall(c, "SELECT * FROM examples WHERE user_id=? ORDER BY id DESC", (user_id,))
 
 
 def delete_example(user_id: int, example_id: int) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM examples WHERE id=? AND user_id=?", (example_id, user_id))
+    with _conn() as c:
+        _exec(c, "DELETE FROM examples WHERE id=? AND user_id=?", (example_id, user_id))
 
 
 def clear_seed_examples(user_id: int) -> int:
-    with get_conn() as conn:
-        return conn.execute("DELETE FROM examples WHERE user_id=? AND is_seed=1", (user_id,)).rowcount
+    with _conn() as c:
+        return _exec(c, "DELETE FROM examples WHERE user_id=? AND is_seed=1", (user_id,)).rowcount
 
 
 def clear_all_examples(user_id: int) -> int:
-    with get_conn() as conn:
-        return conn.execute("DELETE FROM examples WHERE user_id=?", (user_id,)).rowcount
+    with _conn() as c:
+        return _exec(c, "DELETE FROM examples WHERE user_id=?", (user_id,)).rowcount
 
 
 def count_examples(user_id: int) -> int:
-    with get_conn() as conn:
-        return conn.execute("SELECT COUNT(*) c FROM examples WHERE user_id=?", (user_id,)).fetchone()["c"]
+    with _conn() as c:
+        return _fetchone(c, "SELECT COUNT(*) AS c FROM examples WHERE user_id=?", (user_id,))["c"]
 
 
-# ---- events (notable facts / recent stuff) ------------------------------
+# --------------------------------------------------------------------------
+# events (notable facts / recent stuff)
+# --------------------------------------------------------------------------
 
 def add_event(user_id: int, text: str) -> int:
-    with get_conn() as conn:
-        cur = conn.execute(
-            "INSERT INTO events (user_id, created_at, text) VALUES (?,?,?)",
-            (user_id, _now(), text.strip()),
-        )
-        return cur.lastrowid
+    with _conn() as c:
+        return _insert(c, "INSERT INTO events (user_id, created_at, text) VALUES (?,?,?)",
+                       (user_id, _now(), text.strip()))
 
 
 def event_exists(user_id: int, text: str) -> bool:
-    with get_conn() as conn:
-        return conn.execute(
-            "SELECT 1 FROM events WHERE user_id=? AND text=?", (user_id, text.strip())
-        ).fetchone() is not None
+    with _conn() as c:
+        return _fetchone(c, "SELECT 1 AS x FROM events WHERE user_id=? AND text=?",
+                         (user_id, text.strip())) is not None
 
 
 def list_events(user_id: int, limit: Optional[int] = None) -> list[dict]:
     q = "SELECT * FROM events WHERE user_id=? ORDER BY id DESC"
     if limit:
         q += f" LIMIT {int(limit)}"
-    with get_conn() as conn:
-        return [dict(r) for r in conn.execute(q, (user_id,)).fetchall()]
+    with _conn() as c:
+        return _fetchall(c, q, (user_id,))
 
 
 def delete_event(user_id: int, event_id: int) -> None:
-    with get_conn() as conn:
-        conn.execute("DELETE FROM events WHERE id=? AND user_id=?", (event_id, user_id))
+    with _conn() as c:
+        _exec(c, "DELETE FROM events WHERE id=? AND user_id=?", (event_id, user_id))
 
 
 def clear_events(user_id: int) -> int:
-    with get_conn() as conn:
-        return conn.execute("DELETE FROM events WHERE user_id=?", (user_id,)).rowcount
+    with _conn() as c:
+        return _exec(c, "DELETE FROM events WHERE user_id=?", (user_id,)).rowcount
