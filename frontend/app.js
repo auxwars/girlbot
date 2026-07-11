@@ -67,7 +67,7 @@ async function send() {
   if (!q) return;
   $("send").disabled = true; $("q").value = "";
   addMsg("user", q);
-  const thinking = addMsg("bot", "reading the room…", "thinking");
+  const thinking = addMsg("bot", "hold on lemme think 👀", "thinking");
   try {
     const resp = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -90,7 +90,7 @@ async function loadHistory() {
   try {
     const { messages } = await (await fetch("/api/history")).json();
     if (!messages?.length) {
-      addMsg("bot", "yo. what'd she say / do? paste the text or just tell me what's going on and I'll give you my read. 👀");
+      addMsg("bot", "yo wsg 👀 what'd she say / do? drop it here n i'll tell u what it prob means");
       return;
     }
     for (const m of messages) addMsg(m.role, m.content);
@@ -129,7 +129,7 @@ async function loadHistory() {
   $("clearMem").addEventListener("click", async () => {
     if (!confirm("Wipe this chat history? (Your learned patterns about her stay.)")) return;
     await fetch("/api/memory/clear", { method: "POST" });
-    chat.innerHTML = ""; addMsg("bot", "cleared. fresh start. what's up?");
+    chat.innerHTML = ""; addMsg("bot", "aight clean slate 🙏 wsg?");
     toast("chat cleared");
   });
 
