@@ -27,6 +27,15 @@ function addMsg(role, text, cls = "") {
 }
 function bar(pct) { return `<div class="bar"><span style="width:${Math.round(pct * 100)}%"></span></div>`; }
 
+function addTyping() {
+  const d = document.createElement("div");
+  d.className = "msg bot typing";
+  d.innerHTML = "<span></span><span></span><span></span>";
+  chat.appendChild(d);
+  window.scrollTo(0, document.body.scrollHeight);
+  return d;
+}
+
 function renderUnderTheHood(data) {
   const a = data.analysis;
   const p = ['<details class="uth"><summary>🔍 under the hood — what my read is based on</summary><div class="readout">'];
@@ -56,7 +65,7 @@ function renderUnderTheHood(data) {
   p.push(`<div class="hint" style="margin-top:8px">blend → ${b.ml_cases} of her cases · ${b.social} social · ${b.research} papers${data.training_on ? " · 🧠 learning on" : ""}</div>`);
   p.push('</div></details>');
   const wrap = document.createElement("div");
-  wrap.className = "msg bot"; wrap.style.maxWidth = "92%";
+  wrap.className = "msg info";
   wrap.innerHTML = p.join("");
   chat.appendChild(wrap);
   window.scrollTo(0, document.body.scrollHeight);
@@ -65,9 +74,9 @@ function renderUnderTheHood(data) {
 async function send() {
   const q = $("q").value.trim();
   if (!q) return;
-  $("send").disabled = true; $("q").value = "";
+  $("send").disabled = true; $("q").value = ""; $("q").style.height = "auto";
   addMsg("user", q);
-  const thinking = addMsg("bot", "hold on lemme think 👀", "thinking");
+  const thinking = addTyping();
   try {
     const resp = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -107,25 +116,28 @@ async function loadHistory() {
     $("gate").style.display = "flex";
     return;
   }
-  $("appwrap").style.display = "block";
+  $("appwrap").style.display = "flex";
 
-  // apply saved defaults
+  // apply saved defaults + status
   if (me.prefs) {
     $("reliance").value = me.prefs.reliance;
     $("useResearch").checked = me.prefs.use_research;
-    const who = me.user?.name && me.user.name !== "You" ? ` · ${me.user.name}` : "";
     const model = me.prefs.model || "";
     const on = me.prefs.has_anthropic;
+    $("presence").textContent = on ? "active now" : "tap ⚙︎ to add your key";
     $("status").innerHTML =
       `<span class="dot ${on ? "on" : ""}"></span>` +
-      (on ? `online (${model})` : "no API key — see Settings") +
+      (on ? `online · ${model}` : "no API key — see Settings") +
       ` · ${me.example_count} learned` +
-      (me.prefs.training_enabled ? " · 🧠 learning" : " · learning off") + who;
+      (me.prefs.training_enabled ? " · 🧠 learning on" : " · learning off");
   }
   syncReliance();
   $("reliance").addEventListener("input", syncReliance);
   $("send").addEventListener("click", send);
-  $("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+  $("infoBtn").addEventListener("click", () => { $("infoPanel").hidden = !$("infoPanel").hidden; });
+  const ta = $("q");
+  ta.addEventListener("input", () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 120) + "px"; });
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
   $("clearMem").addEventListener("click", async () => {
     if (!confirm("Wipe this chat history? (Your learned patterns about her stay.)")) return;
     await fetch("/api/memory/clear", { method: "POST" });

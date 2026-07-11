@@ -7,46 +7,53 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <!-- login gate (only shown when Google auth is on and you're signed out) -->
+  <!-- login gate (only when Google auth is on and you're signed out) -->
   <div id="gate" class="gate" style="display:none">
     <div class="gate-card">
       <h1>girlbot</h1>
-      <p class="tag">your bro who's been taking notes</p>
-      <p class="hint">Sign in so your memory stays permanent and private to you.</p>
-      <a class="gbtn" href="/auth/login">
-        <span class="g">G</span> Sign in with Google
-      </a>
+      <p class="tag">ur bestie who's been taking notes</p>
+      <p class="hint">sign in so ur chats stay saved n private to u</p>
+      <a class="gbtn" href="/auth/login"><span class="g">G</span> Sign in with Google</a>
     </div>
   </div>
 
-  <div class="wrap" id="appwrap" style="display:none">
-    <header class="top">
-      <div class="brand">
-        <h1>girlbot</h1>
-        <span class="tag">your bro who's been taking notes</span>
+  <div class="screen" id="appwrap" style="display:none">
+    <div class="mac-window">
+      <!-- title bar -->
+      <div class="titlebar">
+        <div class="lights"><span class="l red"></span><span class="l yellow"></span><span class="l green"></span></div>
+        <div class="convo-header">
+          <div class="avatar">💬</div>
+          <div class="name">girlbot</div>
+          <div class="presence" id="presence"></div>
+        </div>
+        <div class="titlebar-actions">
+          <button class="i-btn" id="infoBtn" title="options" aria-label="options">ⓘ</button>
+          <a class="i-btn" href="/settings.html" title="settings">⚙︎</a>
+        </div>
       </div>
-      <div class="topright">
-        <span class="status" id="status"></span>
-        <a class="iconbtn" href="/settings.html" title="Settings">⚙️</a>
-      </div>
-    </header>
 
-    <div class="panel chatpanel">
-      <div class="controls">
+      <!-- ⓘ options drawer -->
+      <div class="info-panel" id="infoPanel" hidden>
         <div class="slider-box">
-          <label for="reliance" style="margin-top:0">how should I decide? — <span id="relianceLabel"></span></label>
+          <label for="reliance">how should I decide? — <span id="relianceLabel"></span></label>
           <input type="range" id="reliance" min="0" max="100" value="60" />
           <div class="ends"><span>outside research</span><span>her data</span></div>
         </div>
-        <label class="toggle"><input type="checkbox" id="useResearch" checked /> research</label>
-        <button class="secondary small" id="clearMem" title="wipe this chat history">clear chat</button>
+        <div class="info-row">
+          <label class="toggle"><input type="checkbox" id="useResearch" checked /> pull research</label>
+          <button class="secondary small" id="clearMem">clear chat</button>
+        </div>
+        <div class="status" id="status"></div>
       </div>
 
-      <div id="chat"></div>
+      <!-- messages -->
+      <div id="chat" class="thread"></div>
 
+      <!-- composer -->
       <div class="composer">
-        <textarea id="q" placeholder="paste what she said or just say wsg…"></textarea>
-        <button id="send">Send</button>
+        <div class="input-pill"><textarea id="q" rows="1" placeholder="iMessage"></textarea></div>
+        <button id="send" class="send-btn" aria-label="send">↑</button>
       </div>
     </div>
   </div>
